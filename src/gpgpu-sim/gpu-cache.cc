@@ -164,22 +164,6 @@ unsigned l2_cache_config::set_index(new_addr_type addr) const {
   return cache_config::set_index(part_addr);
 }
 
-tag_array::~tag_array() {
-  unsigned cache_lines_num = m_config.get_max_num_lines();
-  for (unsigned i = 0; i < cache_lines_num; ++i) delete m_lines[i];
-  delete[] m_lines;
-}
-
-tag_array::tag_array(cache_config &config, int core_id, int type_id,
-                     cache_block_t **new_lines)
-    : m_config(config), m_lines(new_lines) {
-  init(core_id, type_id);
-}
-
-void tag_array::update_cache_parameters(cache_config &config) {
-  m_config = config;
-}
-
 tag_array::tag_array(cache_config &config, int core_id, int type_id)
     : m_config(config) {
   // assert( m_config.m_write_policy == READ_ONLY ); Old assert
@@ -197,19 +181,79 @@ tag_array::tag_array(cache_config &config, int core_id, int type_id)
   init(core_id, type_id);
 }
 
-void tag_array::init(int core_id, int type_id) {
-  m_access = 0;
-  m_miss = 0;
-  m_pending_hit = 0;
-  m_res_fail = 0;
-  m_sector_miss = 0;
-  // initialize snapshot counters for visualizer
-  m_prev_snapshot_access = 0;
-  m_prev_snapshot_miss = 0;
-  m_prev_snapshot_pending_hit = 0;
-  m_core_id = core_id;
-  m_type_id = type_id;
+tag_array::~tag_array() {
+  unsigned cache_lines_num = m_config.get_max_num_lines();
+  for (unsigned i = 0; i < cache_lines_num; ++i) delete m_lines[i];
+  delete[] m_lines;
+}
+
+// TODO: we need write back the flushed data to the upper level
+void tag_array::flush() {
+  if (!is_used) return;
+
+  for (unsigned i = 0; i < m_config.get_num_lines(); i++)
+    if (m_lines[i]->is_modified_line()) {
+      for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
+        m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
+    }
+
   is_used = false;
+}
+
+void tag_array::invalidate() {
+  if (!is_used) return;
+
+  for (unsigned i = 0; i < m_config.get_num_lines(); i++)
+    for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
+      m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
+
+  is_used = false;
+}
+
+
+void tag_array::new_window() {
+  m_prev_snapshot_access = m_access;
+  m_prev_snapshot_miss = m_miss;
+  m_prev_snapshot_miss = m_miss + m_sector_miss;
+  m_prev_snapshot_pending_hit = m_pending_hit;
+}
+
+void tag_array::print(FILE *stream, unsigned &total_access,
+                      unsigned &total_misses) const {
+  m_config.print(stream);
+  fprintf(stream,
+          "\t\tAccess = %d, Miss = %d, Sector_Miss = %d, Total_Miss = %d "
+          "(%.3g), PendingHit = %d (%.3g)\n",
+          m_access, m_miss, m_sector_miss, (m_miss + m_sector_miss),
+          (float)(m_miss + m_sector_miss) / m_access, m_pending_hit,
+          (float)m_pending_hit / m_access);
+  total_misses += (m_miss + m_sector_miss);
+  total_access += m_access;
+}
+
+float tag_array::windowed_miss_rate() const {
+  unsigned n_access = m_access - m_prev_snapshot_access;
+  unsigned n_miss = (m_miss + m_sector_miss) - m_prev_snapshot_miss;
+  // unsigned n_pending_hit = m_pending_hit - m_prev_snapshot_pending_hit;
+
+  float missrate = 0.0f;
+  if (n_access != 0) missrate = (float)(n_miss + m_sector_miss) / n_access;
+  return missrate;
+}
+
+void tag_array::get_stats(unsigned &total_access, unsigned &total_misses,
+                          unsigned &total_hit_res,
+                          unsigned &total_res_fail) const {
+  // Update statistics from the tag array
+  total_access = m_access;
+  total_misses = (m_miss + m_sector_miss);
+  total_hit_res = m_pending_hit;
+  total_res_fail = m_res_fail;
+}
+
+
+void tag_array::update_cache_parameters(cache_config &config) {
+  m_config = config;
 }
 
 void tag_array::add_pending_line(mem_fetch *mf) {
@@ -230,14 +274,44 @@ void tag_array::remove_pending_line(mem_fetch *mf) {
   }
 }
 
-enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
+tag_array::tag_array(cache_config &config, int core_id, int type_id,
+                     cache_block_t **new_lines)
+    : m_config(config), m_lines(new_lines) {
+  init(core_id, type_id);
+}
+
+void tag_array::init(int core_id, int type_id) {
+  m_access = 0;
+  m_miss = 0;
+  m_pending_hit = 0;
+  m_res_fail = 0;
+  m_sector_miss = 0;
+  // initialize snapshot counters for visualizer
+  m_prev_snapshot_access = 0;
+  m_prev_snapshot_miss = 0;
+  m_prev_snapshot_pending_hit = 0;
+  m_core_id = core_id;
+  m_type_id = type_id;
+  is_used = false;
+}
+
+tag_array_LRU::tag_array_LRU(cache_config &config, int core_id, int type_id):tag_array(config, core_id, type_id)
+{
+  
+}
+
+tag_array_LRU::~tag_array_LRU()
+{
+}
+
+enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx,
                                            mem_fetch *mf,
                                            bool probe_mode) const {
   mem_access_sector_mask_t mask = mf->get_access_sector_mask();
   return probe(addr, idx, mask, probe_mode, mf);
 }
 
-enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
+enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx,
                                            mem_access_sector_mask_t mask,
                                            bool probe_mode,
                                            mem_fetch *mf) const {
@@ -324,7 +398,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   return MISS;
 }
 
-enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
+enum cache_request_status tag_array_LRU::access(new_addr_type addr, unsigned time,
                                             unsigned &idx, mem_fetch *mf) {
   bool wb = false;
   evicted_block_info evicted;
@@ -333,7 +407,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
   return result;
 }
 
-enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
+enum cache_request_status tag_array_LRU::access(new_addr_type addr, unsigned time,
                                             unsigned &idx, bool &wb,
                                             evicted_block_info &evicted,
                                             mem_fetch *mf) {
@@ -383,11 +457,11 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
   return status;
 }
 
-void tag_array::fill(new_addr_type addr, unsigned time, mem_fetch *mf) {
+void tag_array_LRU::fill(new_addr_type addr, unsigned time, mem_fetch *mf) {
   fill(addr, time, mf->get_access_sector_mask());
 }
 
-void tag_array::fill(new_addr_type addr, unsigned time,
+void tag_array_LRU::fill(new_addr_type addr, unsigned time,
                      mem_access_sector_mask_t mask) {
   // assert( m_config.m_alloc_policy == ON_FILL );
   unsigned idx;
@@ -405,73 +479,210 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   m_lines[idx]->fill(time, mask);
 }
 
-void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
+void tag_array_LRU::fill(unsigned index, unsigned time, mem_fetch *mf) {
   assert(m_config.m_alloc_policy == ON_MISS);
   m_lines[index]->fill(time, mf->get_access_sector_mask());
 }
 
-// TODO: we need write back the flushed data to the upper level
-void tag_array::flush() {
-  if (!is_used) return;
+tag_array_LRU::tag_array_LRU(cache_config &config, int core_id, int type_id,
+          cache_block_t **new_lines):tag_array(config, core_id, type_id, new_lines)
+{
+  
+}
 
-  for (unsigned i = 0; i < m_config.get_num_lines(); i++)
-    if (m_lines[i]->is_modified_line()) {
-      for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
-        m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
+tag_array_FIFO::tag_array_FIFO(cache_config &config, int core_id, int type_id):tag_array(config, core_id, type_id)
+{
+}
+
+tag_array_FIFO::~tag_array_FIFO()
+{
+}
+
+enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &idx,
+                                           mem_fetch *mf,
+                                           bool probe_mode) const {
+  mem_access_sector_mask_t mask = mf->get_access_sector_mask();
+  return probe(addr, idx, mask, probe_mode, mf);
+}
+
+enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &idx,
+                                           mem_access_sector_mask_t mask,
+                                           bool probe_mode,
+                                           mem_fetch *mf) const {
+  // assert( m_config.m_write_policy == READ_ONLY );
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  unsigned invalid_line = (unsigned)-1;
+  unsigned valid_line = (unsigned)-1;
+  unsigned long long valid_timestamp = (unsigned)-1;
+
+  bool all_reserved = true;
+
+  // check for hit or pending hit
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      if (line->get_status(mask) == RESERVED) {
+        idx = index;
+        return HIT_RESERVED;
+      } else if (line->get_status(mask) == VALID) {
+        idx = index;
+        return HIT;
+      } else if (line->get_status(mask) == MODIFIED) {
+        if (line->is_readable(mask)) {
+          idx = index;
+          return HIT;
+        } else {
+          idx = index;
+          return SECTOR_MISS;
+        }
+
+      } else if (line->is_valid_line() && line->get_status(mask) == INVALID) {
+        idx = index;
+        return SECTOR_MISS;
+      } else {
+        assert(line->get_status(mask) == INVALID);
+      }
     }
+    if (!line->is_reserved_line()) {
+      all_reserved = false;
+      if (line->is_invalid_line()) {
+        invalid_line = index;
+      } else {
+        // valid line : keep track of most appropriate replacement candidate
+        if (m_config.m_replacement_policy == LRU) {
+          if (line->get_last_access_time() < valid_timestamp) {
+            valid_timestamp = line->get_last_access_time();
+            valid_line = index;
+          }
+        } else if (m_config.m_replacement_policy == FIFO) {
+          if (line->get_alloc_time() < valid_timestamp) {
+            valid_timestamp = line->get_alloc_time();
+            valid_line = index;
+          }
+        }
+      }
+    }
+  }
+  if (all_reserved) {
+    assert(m_config.m_alloc_policy == ON_MISS);
+    return RESERVATION_FAIL;  // miss and not enough space in cache to allocate
+                              // on miss
+  }
 
-  is_used = false;
+  if (invalid_line != (unsigned)-1) {
+    idx = invalid_line;
+  } else if (valid_line != (unsigned)-1) {
+    idx = valid_line;
+  } else
+    abort();  // if an unreserved block exists, it is either invalid or
+              // replaceable
+
+  if (probe_mode && m_config.is_streaming()) {
+    line_table::const_iterator i =
+        pending_lines.find(m_config.block_addr(addr));
+    assert(mf);
+    if (!mf->is_write() && i != pending_lines.end()) {
+      if (i->second != mf->get_inst().get_uid()) return SECTOR_MISS;
+    }
+  }
+
+  return MISS;
 }
 
-void tag_array::invalidate() {
-  if (!is_used) return;
-
-  for (unsigned i = 0; i < m_config.get_num_lines(); i++)
-    for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
-      m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
-
-  is_used = false;
+enum cache_request_status tag_array_FIFO::access(new_addr_type addr, unsigned time,
+                                            unsigned &idx, mem_fetch *mf) {
+  bool wb = false;
+  evicted_block_info evicted;
+  enum cache_request_status result = access(addr, time, idx, wb, evicted, mf);
+  assert(!wb);
+  return result;
 }
 
-float tag_array::windowed_miss_rate() const {
-  unsigned n_access = m_access - m_prev_snapshot_access;
-  unsigned n_miss = (m_miss + m_sector_miss) - m_prev_snapshot_miss;
-  // unsigned n_pending_hit = m_pending_hit - m_prev_snapshot_pending_hit;
-
-  float missrate = 0.0f;
-  if (n_access != 0) missrate = (float)(n_miss + m_sector_miss) / n_access;
-  return missrate;
+enum cache_request_status tag_array_FIFO::access(new_addr_type addr, unsigned time,
+                                            unsigned &idx, bool &wb,
+                                            evicted_block_info &evicted,
+                                            mem_fetch *mf) {
+  m_access++;
+  is_used = true;
+  shader_cache_access_log(m_core_id, m_type_id, 0);  // log accesses to cache
+  enum cache_request_status status = probe(addr, idx, mf);
+  switch (status) {
+    case HIT_RESERVED:
+      m_pending_hit++;
+    case HIT:
+      m_lines[idx]->set_last_access_time(time, mf->get_access_sector_mask());
+      break;
+    case MISS:
+      m_miss++;
+      shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
+      if (m_config.m_alloc_policy == ON_MISS) {
+        if (m_lines[idx]->is_modified_line()) {
+          wb = true;
+          evicted.set_info(m_lines[idx]->m_block_addr,
+                           m_lines[idx]->get_modified_size());
+        }
+        m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
+                               time, mf->get_access_sector_mask());
+      }
+      break;
+    case SECTOR_MISS:
+      assert(m_config.m_cache_type == SECTOR);
+      m_sector_miss++;
+      shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
+      if (m_config.m_alloc_policy == ON_MISS) {
+        ((sector_cache_block *)m_lines[idx])
+            ->allocate_sector(time, mf->get_access_sector_mask());
+      }
+      break;
+    case RESERVATION_FAIL:
+      m_res_fail++;
+      shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
+      break;
+    default:
+      fprintf(stderr,
+              "tag_array::access - Error: Unknown"
+              "cache_request_status %d\n",
+              status);
+      abort();
+  }
+  return status;
 }
 
-void tag_array::new_window() {
-  m_prev_snapshot_access = m_access;
-  m_prev_snapshot_miss = m_miss;
-  m_prev_snapshot_miss = m_miss + m_sector_miss;
-  m_prev_snapshot_pending_hit = m_pending_hit;
+void tag_array_FIFO::fill(new_addr_type addr, unsigned time, mem_fetch *mf) {
+  fill(addr, time, mf->get_access_sector_mask());
 }
 
-void tag_array::print(FILE *stream, unsigned &total_access,
-                      unsigned &total_misses) const {
-  m_config.print(stream);
-  fprintf(stream,
-          "\t\tAccess = %d, Miss = %d, Sector_Miss = %d, Total_Miss = %d "
-          "(%.3g), PendingHit = %d (%.3g)\n",
-          m_access, m_miss, m_sector_miss, (m_miss + m_sector_miss),
-          (float)(m_miss + m_sector_miss) / m_access, m_pending_hit,
-          (float)m_pending_hit / m_access);
-  total_misses += (m_miss + m_sector_miss);
-  total_access += m_access;
+void tag_array_FIFO::fill(new_addr_type addr, unsigned time,
+                     mem_access_sector_mask_t mask) {
+  // assert( m_config.m_alloc_policy == ON_FILL );
+  unsigned idx;
+  enum cache_request_status status = probe(addr, idx, mask);
+  // assert(status==MISS||status==SECTOR_MISS); // MSHR should have prevented
+  // redundant memory request
+  if (status == MISS)
+    m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
+                           mask);
+  else if (status == SECTOR_MISS) {
+    assert(m_config.m_cache_type == SECTOR);
+    ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
+  }
+
+  m_lines[idx]->fill(time, mask);
 }
 
-void tag_array::get_stats(unsigned &total_access, unsigned &total_misses,
-                          unsigned &total_hit_res,
-                          unsigned &total_res_fail) const {
-  // Update statistics from the tag array
-  total_access = m_access;
-  total_misses = (m_miss + m_sector_miss);
-  total_hit_res = m_pending_hit;
-  total_res_fail = m_res_fail;
+void tag_array_FIFO::fill(unsigned index, unsigned time, mem_fetch *mf) {
+  assert(m_config.m_alloc_policy == ON_MISS);
+  m_lines[index]->fill(time, mf->get_access_sector_mask());
 }
+
+tag_array_FIFO::tag_array_FIFO(cache_config &config, int core_id, int type_id,
+          cache_block_t **new_lines):tag_array(config, core_id, type_id, new_lines)
+{
+}
+
 
 bool was_write_sent(const std::list<cache_event> &events) {
   for (std::list<cache_event>::const_iterator e = events.begin();
@@ -942,6 +1153,26 @@ void cache_stats::sample_cache_port_utility(bool data_port_busy,
   if (fill_port_busy) {
     m_cache_fill_port_busy_cycles += 1;
   }
+}
+
+baseline_cache::baseline_cache(const char *name, cache_config &config, int core_id,
+                int type_id, mem_fetch_interface *memport,
+                enum mem_fetch_status status)
+    : m_config(config),
+      m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
+      m_bandwidth_management(config) 
+{
+  tag_array* tg;
+  if(config.m_replacement_policy == LRU)
+  {
+    tg = new tag_array_LRU(config, core_id, type_id);
+  }
+  else if(config.m_replacement_policy == LRU)
+  {
+    tg = new tag_array_FIFO(config, core_id, type_id);
+  }
+  m_tag_array = tg;
+  init(name, config, memport, status);
 }
 
 baseline_cache::bandwidth_management::bandwidth_management(cache_config &config)

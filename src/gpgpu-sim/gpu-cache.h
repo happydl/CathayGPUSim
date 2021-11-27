@@ -775,6 +775,8 @@ class cache_config {
       m_set_index_function;  // Hash, linear, or custom set index function
 
   friend class tag_array;
+  friend class tag_array_LRU;
+  friend class tag_array_FIFO;
   friend class baseline_cache;
   friend class read_only_cache;
   friend class tex_cache;
@@ -817,21 +819,21 @@ class tag_array {
   tag_array(cache_config &config, int core_id, int type_id);
   ~tag_array();
 
-  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                  mem_fetch *mf, bool probe_mode = false) const;
-  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+  virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_fetch *mf, bool probe_mode = false) ;
+  virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_access_sector_mask_t mask,
                                   bool probe_mode = false,
-                                  mem_fetch *mf = NULL) const;
-  enum cache_request_status access(new_addr_type addr, unsigned time,
-                                   unsigned &idx, mem_fetch *mf);
-  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                  mem_fetch *mf = NULL) ;
+  virtual enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, mem_fetch *mf) ;
+  virtual enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, bool &wb,
-                                   evicted_block_info &evicted, mem_fetch *mf);
+                                   evicted_block_info &evicted, mem_fetch *mf) ;
 
-  void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
-  void fill(unsigned idx, unsigned time, mem_fetch *mf);
-  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
+  virtual void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
+  virtual void fill(unsigned idx, unsigned time, mem_fetch *mf);
+  virtual void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
@@ -883,6 +885,64 @@ class tag_array {
 
   typedef tr1_hash_map<new_addr_type, unsigned> line_table;
   line_table pending_lines;
+};
+
+/*
+child of tag_array
+for evict pollicy LRU ...
+*/
+class tag_array_LRU: public tag_array {
+ public:
+  // Use this constructor
+  tag_array_LRU(cache_config &config, int core_id, int type_id);
+  ~tag_array_LRU();
+
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_fetch *mf, bool probe_mode = false) const;
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_access_sector_mask_t mask,
+                                  bool probe_mode = false,
+                                  mem_fetch *mf = NULL) const;
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, mem_fetch *mf);
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, bool &wb,
+                                   evicted_block_info &evicted, mem_fetch *mf);
+
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
+  void fill(unsigned idx, unsigned time, mem_fetch *mf);
+  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
+
+protected:
+  tag_array_LRU(cache_config &config, int core_id, int type_id,
+            cache_block_t **new_lines);
+};
+
+class tag_array_FIFO: public tag_array {
+ public:
+  // Use this constructor
+  tag_array_FIFO(cache_config &config, int core_id, int type_id);
+  ~tag_array_FIFO();
+
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_fetch *mf, bool probe_mode = false) const;
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_access_sector_mask_t mask,
+                                  bool probe_mode = false,
+                                  mem_fetch *mf = NULL) const;
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, mem_fetch *mf);
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, bool &wb,
+                                   evicted_block_info &evicted, mem_fetch *mf);
+
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
+  void fill(unsigned idx, unsigned time, mem_fetch *mf);
+  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
+
+protected:
+  tag_array_FIFO(cache_config &config, int core_id, int type_id,
+            cache_block_t **new_lines);
 };
 
 class mshr_table {
@@ -1135,13 +1195,7 @@ class baseline_cache : public cache_t {
  public:
   baseline_cache(const char *name, cache_config &config, int core_id,
                  int type_id, mem_fetch_interface *memport,
-                 enum mem_fetch_status status)
-      : m_config(config),
-        m_tag_array(new tag_array(config, core_id, type_id)),
-        m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
-        m_bandwidth_management(config) {
-    init(name, config, memport, status);
-  }
+                 enum mem_fetch_status status);
 
   void init(const char *name, const cache_config &config,
             mem_fetch_interface *memport, enum mem_fetch_status status) {
