@@ -1167,7 +1167,7 @@ baseline_cache::baseline_cache(const char *name, cache_config &config, int core_
   {
     tg = new tag_array_LRU(config, core_id, type_id);
   }
-  else if(config.m_replacement_policy == LRU)
+  else if(config.m_replacement_policy == FIFO)
   {
     tg = new tag_array_FIFO(config, core_id, type_id);
   }
