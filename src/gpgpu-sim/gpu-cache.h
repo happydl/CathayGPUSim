@@ -820,11 +820,11 @@ class tag_array {
   virtual ~tag_array();
 
   virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                  mem_fetch *mf, bool probe_mode = false) ;
+                                  mem_fetch *mf, bool probe_mode = false) const;
   virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_access_sector_mask_t mask,
                                   bool probe_mode = false,
-                                  mem_fetch *mf = NULL) ;
+                                  mem_fetch *mf = NULL) const;
   virtual enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf) ;
   virtual enum cache_request_status access(new_addr_type addr, unsigned time,
