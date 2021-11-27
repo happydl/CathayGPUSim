@@ -817,7 +817,7 @@ class tag_array {
  public:
   // Use this constructor
   tag_array(cache_config &config, int core_id, int type_id);
-  ~tag_array();
+  virtual ~tag_array();
 
   virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_fetch *mf, bool probe_mode = false) ;
