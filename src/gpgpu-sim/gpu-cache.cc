@@ -1037,7 +1037,7 @@ tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : t
 	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
 	for (int i = 0; i < n_set; i++)
     {
-        order[i] = (int *)calloc(n_assoc, sizeof(int));
+        order[i] = (unsigned *)calloc(n_assoc, sizeof(int));
     }
 	for(int i = 0;i<n_set;i++) {
 		for (int j = 0; j<n_assoc;j++) {
