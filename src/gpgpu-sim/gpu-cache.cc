@@ -1031,6 +1031,19 @@ tag_array_FIFO::tag_array_FIFO(cache_config &config, int core_id, int type_id,
 
 tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : tag_array(config, core_id, type_id)
 {
+	unsigned cache_lines_num = config.get_max_num_lines();
+	unsigned n_set = config.get_nset();
+	unsigned n_assoc = m_config.m_assoc;
+	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
+	for (int i = 0; i < n_set; i++)
+    {
+        order[i] = (int *)calloc(n_assoc, sizeof(int));
+    }
+	for(int i = 0;i<n_set;i++) {
+		for (int j = 0; j<n_assoc;j++) {
+			order[i][j] = j;
+		}
+	}
 }
 
 tag_array_IPV::~tag_array_IPV()
@@ -1107,26 +1120,7 @@ enum cache_request_status tag_array_IPV::probe(new_addr_type addr, unsigned &idx
             {
                 invalid_line = index;
             }
-            else
-            {
-                // valid line : keep track of most appropriate replacement candidate
-                if (m_config.m_replacement_policy == LRU)
-                {
-                    if (line->get_last_access_time() < valid_timestamp)
-                    {
-                        valid_timestamp = line->get_last_access_time();
-                        valid_line = index;
-                    }
-                }
-                else if (m_config.m_replacement_policy == FIFO)
-                {
-                    if (line->get_alloc_time() < valid_timestamp)
-                    {
-                        valid_timestamp = line->get_alloc_time();
-                        valid_line = index;
-                    }
-                }
-            }
+			// delete else
         }
     }
     if (all_reserved)
@@ -1135,6 +1129,9 @@ enum cache_request_status tag_array_IPV::probe(new_addr_type addr, unsigned &idx
         return RESERVATION_FAIL; // miss and not enough space in cache to allocate
                                  // on miss
     }
+
+	unsigned valid_order_ind = order[set_index][m_config.m_assoc]; // get index from the last position of order
+	valid_line = set_index * m_config.m_assoc + valid_order_ind;
 
     if (invalid_line != (unsigned)-1)
     {

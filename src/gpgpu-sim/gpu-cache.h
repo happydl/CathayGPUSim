@@ -971,6 +971,9 @@ class tag_array_IPV: public tag_array {
 protected:
   tag_array_IPV(cache_config &config, int core_id, int type_id,
             cache_block_t **new_lines);
+private:
+	unsigned ** order;// order[set_index][i] = index of i=th way in m_lines[set_index], to get the block: m_lines[set_index * assoc + order[set_index][i]]
+	unsigned *ipv;
 };
 
 
