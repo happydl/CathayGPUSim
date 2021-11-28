@@ -777,6 +777,7 @@ class cache_config {
   friend class tag_array;
   friend class tag_array_LRU;
   friend class tag_array_FIFO;
+  friend class tag_array_IPV;
   friend class baseline_cache;
   friend class read_only_cache;
   friend class tex_cache;
