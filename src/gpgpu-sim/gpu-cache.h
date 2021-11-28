@@ -500,15 +500,8 @@ class cache_config {
       case 'F':
         m_replacement_policy = FIFO;
         break;
-      default:
-        exit_parse_error();
-    }
-    switch (rp) {
-      case 'L':
-        m_replacement_policy = LRU;
-        break;
-      case 'F':
-        m_replacement_policy = FIFO;
+	  case 'V':
+        m_replacement_policy = IPV;
         break;
       default:
         exit_parse_error();
