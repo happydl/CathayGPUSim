@@ -214,7 +214,7 @@ tag_array::~tag_array()
 
 enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
                                                mem_fetch *mf,
-                                               bool probe_mode) const
+                                               bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -223,7 +223,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
 enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
                                                mem_access_sector_mask_t mask,
                                                bool probe_mode,
-                                               mem_fetch *mf) const
+                                               mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -568,7 +568,7 @@ tag_array_LRU::~tag_array_LRU()
 
 enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx,
                                                mem_fetch *mf,
-                                               bool probe_mode) const
+                                               bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -577,7 +577,7 @@ enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx
 enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx,
                                                mem_access_sector_mask_t mask,
                                                bool probe_mode,
-                                               mem_fetch *mf) const
+                                               mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -803,7 +803,7 @@ tag_array_FIFO::~tag_array_FIFO()
 
 enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &idx,
                                                 mem_fetch *mf,
-                                                bool probe_mode) const
+                                                bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -812,7 +812,7 @@ enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &id
 enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &idx,
                                                 mem_access_sector_mask_t mask,
                                                 bool probe_mode,
-                                                mem_fetch *mf) const
+                                                mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -1027,6 +1027,268 @@ tag_array_FIFO::tag_array_FIFO(cache_config &config, int core_id, int type_id,
                                cache_block_t **new_lines) : tag_array(config, core_id, type_id, new_lines)
 {
 }
+
+tag_array_CLOCK::tag_array_CLOCK(cache_config &config, int core_id, int type_id) : tag_array(config, core_id, type_id)
+{
+    m_probe_way_i = std::vector<int> (config.m_nset, 0);
+    m_refer_bits = std::vector<bool> (config.m_nset * config.m_assoc, false);
+}
+
+tag_array_CLOCK::~tag_array_CLOCK()
+{
+}
+
+enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &idx,
+                                                mem_fetch *mf,
+                                                bool probe_mode)
+{
+    mem_access_sector_mask_t mask = mf->get_access_sector_mask();
+    return probe(addr, idx, mask, probe_mode, mf);
+}
+
+enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &idx,
+                                                mem_access_sector_mask_t mask,
+                                                bool probe_mode,
+                                                mem_fetch *mf)
+{
+    // assert( m_config.m_write_policy == READ_ONLY );
+    unsigned set_index = m_config.set_index(addr);
+    new_addr_type tag = m_config.tag(addr);
+
+    unsigned invalid_line = (unsigned)-1;
+    unsigned valid_line = (unsigned)-1;
+    bool all_reserved = true;
+
+    // first loop: check for hit or pending hit, find invalid line if not
+    for (unsigned way = 0; way < m_config.m_assoc; way++)
+    {
+        unsigned index = set_index * m_config.m_assoc + way;
+        cache_block_t *line = m_lines[index];
+        if (line->m_tag == tag)
+        {
+            if (line->get_status(mask) == RESERVED)
+            {
+                idx = index;
+                return HIT_RESERVED;
+            }
+            else if (line->get_status(mask) == VALID)
+            {
+                idx = index;
+                return HIT;
+            }
+            else if (line->get_status(mask) == MODIFIED)
+            {
+                if (line->is_readable(mask))
+                {
+                    idx = index;
+                    return HIT;
+                }
+                else
+                {
+                    idx = index;
+                    return SECTOR_MISS;
+                }
+            }
+            else if (line->is_valid_line() && line->get_status(mask) == INVALID)
+            {
+                idx = index;
+                return SECTOR_MISS;
+            }
+            else
+            {
+                assert(line->get_status(mask) == INVALID);
+            }
+        }
+        if (!line->is_reserved_line())
+        {
+            all_reserved = false;
+            if (line->is_invalid_line())
+            {
+                invalid_line = index;
+                break;
+            }
+        }
+    }
+
+    if (all_reserved)
+    {
+        assert(m_config.m_alloc_policy == ON_MISS);
+        return RESERVATION_FAIL; // miss and not enough space in cache to allocate
+                                 // on miss
+    }
+
+    if (invalid_line != (unsigned)-1)
+    {
+        idx = invalid_line;
+    }
+    else
+    {
+    // cache is full, all cache lines are valid line, select one to evict
+        valid_line = pick_and_update(set_index);
+        if(valid_line != (unsigned)-1)
+            idx = valid_line;
+        else
+            abort(); // if an unreserved block exists, it is either invalid or
+                 // replaceable
+    }
+
+    if (probe_mode && m_config.is_streaming())
+    {
+        line_table::const_iterator i =
+            pending_lines.find(m_config.block_addr(addr));
+        assert(mf);
+        if (!mf->is_write() && i != pending_lines.end())
+        {
+            if (i->second != mf->get_inst().get_uid())
+                return SECTOR_MISS;
+        }
+    }
+
+    return MISS;
+}
+
+enum cache_request_status tag_array_CLOCK::access(new_addr_type addr, unsigned time,
+                                                 unsigned &idx, mem_fetch *mf)
+{
+    bool wb = false;
+    evicted_block_info evicted;
+    enum cache_request_status result = access(addr, time, idx, wb, evicted, mf);
+    assert(!wb);
+    return result;
+}
+
+enum cache_request_status tag_array_CLOCK::access(new_addr_type addr, unsigned time,
+                                                 unsigned &idx, bool &wb,
+                                                 evicted_block_info &evicted,
+                                                 mem_fetch *mf)
+{
+    m_access++;
+    is_used = true;
+    shader_cache_access_log(m_core_id, m_type_id, 0); // log accesses to cache
+    enum cache_request_status status = probe(addr, idx, mf);
+    switch (status)
+    {
+    case HIT_RESERVED:
+        m_pending_hit++;
+    case HIT:
+        m_lines[idx]->set_last_access_time(time, mf->get_access_sector_mask());
+        // set refer bit for CLOCK cache replacement policy
+        m_refer_bits[idx] = true;
+        break;
+    case MISS:
+        m_miss++;
+        shader_cache_access_log(m_core_id, m_type_id, 1); // log cache misses
+        if (m_config.m_alloc_policy == ON_MISS)
+        {
+            if (m_lines[idx]->is_modified_line())
+            {
+                wb = true;
+                evicted.set_info(m_lines[idx]->m_block_addr,
+                                 m_lines[idx]->get_modified_size());
+            }
+            m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
+                                   time, mf->get_access_sector_mask());
+        }
+        break;
+    case SECTOR_MISS:
+        assert(m_config.m_cache_type == SECTOR);
+        m_sector_miss++;
+        shader_cache_access_log(m_core_id, m_type_id, 1); // log cache misses
+        if (m_config.m_alloc_policy == ON_MISS)
+        {
+            ((sector_cache_block *)m_lines[idx])
+                ->allocate_sector(time, mf->get_access_sector_mask());
+        }
+        break;
+    case RESERVATION_FAIL:
+        m_res_fail++;
+        shader_cache_access_log(m_core_id, m_type_id, 1); // log cache misses
+        break;
+    default:
+        fprintf(stderr,
+                "tag_array::access - Error: Unknown"
+                "cache_request_status %d\n",
+                status);
+        abort();
+    }
+    return status;
+}
+
+void tag_array_CLOCK::fill(new_addr_type addr, unsigned time, mem_fetch *mf)
+{
+    fill(addr, time, mf->get_access_sector_mask());
+}
+
+void tag_array_CLOCK::fill(new_addr_type addr, unsigned time,
+                          mem_access_sector_mask_t mask)
+{
+    // assert( m_config.m_alloc_policy == ON_FILL );
+    unsigned idx;
+    enum cache_request_status status = probe(addr, idx, mask);
+    // assert(status==MISS||status==SECTOR_MISS); // MSHR should have prevented
+    // redundant memory request
+    if (status == MISS)
+        m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
+                               mask);
+    else if (status == SECTOR_MISS)
+    {
+        assert(m_config.m_cache_type == SECTOR);
+        ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
+    }
+
+    m_lines[idx]->fill(time, mask);
+    // (? not sure) set reference bit for CLOCK cache replacement policy
+    m_refer_bits[idx] = true;
+}
+
+void tag_array_CLOCK::fill(unsigned index, unsigned time, mem_fetch *mf)
+{
+    assert(m_config.m_alloc_policy == ON_MISS);
+    m_lines[index]->fill(time, mf->get_access_sector_mask());
+    // (? not sure) set reference bit for CLOCK cache replacement policy
+    m_refer_bits[index] = true;
+}
+
+tag_array_CLOCK::tag_array_CLOCK(cache_config &config, int core_id, int type_id,
+                               cache_block_t **new_lines) : tag_array(config, core_id, type_id, new_lines)
+{
+    m_probe_way_i = std::vector<int> (config.m_nset, 0);
+    m_refer_bits = std::vector<bool> (config.m_nset * config.m_assoc, false);
+}
+
+unsigned tag_array_CLOCK::pick_and_update(unsigned set_index)
+{
+    unsigned tmp_way = m_probe_way_i[set_index];
+    unsigned loop_count = 0;
+    unsigned valid_line = (unsigned)-1;
+    while(true)
+    {
+        ++ loop_count;
+        unsigned index = set_index * m_config.m_assoc + tmp_way;
+        cache_block_t *line = m_lines[index];
+        if (!line->is_reserved_line())
+        {
+            // all lines in cache must be valid line
+            assert(!line->is_invalid_line());
+            if(m_refer_bits[index])
+            {
+                m_refer_bits[index] = false;
+                // if reference bits of all way in this cache set is 1, then need m_assoc + 1 probe
+                if(loop_count == m_config.m_assoc + 1)
+                    break;
+                tmp_way = (tmp_way + 1) % m_config.m_assoc;
+            }
+            else
+            {
+                valid_line = index;
+                break;
+            }
+        }
+    }
+    m_probe_way_i[set_index] = tmp_way;
+    return valid_line;
+}
+
 
 
 tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : tag_array(config, core_id, type_id)
@@ -1870,21 +2132,23 @@ baseline_cache::baseline_cache(const char *name, cache_config &config, int core_
       m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
       m_bandwidth_management(config)
 {
-    if (config.m_replacement_policy == LRU)
+    switch(config.m_replacement_policy)
     {
-        m_tag_array = new tag_array_LRU(config, core_id, type_id);
-    }
-    else if (config.m_replacement_policy == FIFO)
-    {
-        m_tag_array = new tag_array_FIFO(config, core_id, type_id);
-    }
-	else if (config.m_replacement_policy == IPV)
-    {
-        m_tag_array = new tag_array_IPV(config, core_id, type_id);
-    }
-    else
-    {
-        m_tag_array = new tag_array_LRU(config, core_id, type_id);
+        case LRU:
+            m_tag_array = new tag_array_LRU(config, core_id, type_id);
+            break;
+        case FIFO:
+            m_tag_array = new tag_array_FIFO(config, core_id, type_id);
+            break;
+        case CLOCK_REPLACE:
+            m_tag_array = new tag_array_CLOCK(config, core_id, type_id);
+            break;
+        case IPV:
+            m_tag_array = new tag_array_IPV(config, core_id, type_id);
+            break;
+        default:
+            m_tag_array = new tag_array_LRU(config, core_id, type_id);
+            break;
     }
     init(name, config, memport, status);
 }
