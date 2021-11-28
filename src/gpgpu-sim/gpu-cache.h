@@ -410,7 +410,7 @@ struct sector_cache_block : public cache_block_t {
   }
 };
 
-enum replacement_policy_t { LRU, FIFO };
+enum replacement_policy_t { LRU, FIFO, CLOCK_REPLACE };
 
 enum write_policy_t {
   READ_ONLY,
@@ -777,6 +777,7 @@ class cache_config {
   friend class tag_array;
   friend class tag_array_LRU;
   friend class tag_array_FIFO;
+  friend class tag_array_CLOCK;
   friend class baseline_cache;
   friend class read_only_cache;
   friend class tex_cache;
@@ -943,6 +944,41 @@ class tag_array_FIFO: public tag_array {
 protected:
   tag_array_FIFO(cache_config &config, int core_id, int type_id,
             cache_block_t **new_lines);
+};
+
+/*
+* for clock replacement policy (second-chance FIFO)
+*/
+class tag_array_CLOCK: public tag_array 
+{
+public:
+    // Use this constructor
+    tag_array_CLOCK(cache_config &config, int core_id, int type_id);
+    ~tag_array_CLOCK();
+
+    enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                    mem_fetch *mf, bool probe_mode = false) const;
+    enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                    mem_access_sector_mask_t mask,
+                                    bool probe_mode = false,
+                                    mem_fetch *mf = NULL) const;
+    enum cache_request_status access(new_addr_type addr, unsigned time,
+                                    unsigned &idx, mem_fetch *mf);
+    enum cache_request_status access(new_addr_type addr, unsigned time,
+                                    unsigned &idx, bool &wb,
+                                    evicted_block_info &evicted, mem_fetch *mf);
+
+    void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
+    void fill(unsigned idx, unsigned time, mem_fetch *mf);
+    void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
+
+protected:
+    tag_array_CLOCK(cache_config &config, int core_id, int type_id,
+                cache_block_t **new_lines);
+
+private:
+    std::vector<int> m_probe_way_i; // for each cache set, id of next probe slot id
+    std::vector<bool> m_refer_bits; // refer bits of each slot in the whole cache
 };
 
 class mshr_table {
