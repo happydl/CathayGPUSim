@@ -410,7 +410,7 @@ struct sector_cache_block : public cache_block_t {
   }
 };
 
-enum replacement_policy_t { LRU, FIFO };
+enum replacement_policy_t { LRU, FIFO, IPV };
 
 enum write_policy_t {
   READ_ONLY,
@@ -944,6 +944,34 @@ protected:
   tag_array_FIFO(cache_config &config, int core_id, int type_id,
             cache_block_t **new_lines);
 };
+
+class tag_array_IPV: public tag_array {
+ public:
+  // Use this constructor
+  tag_array_IPV(cache_config &config, int core_id, int type_id);
+  tag_array_IPV();
+
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_fetch *mf, bool probe_mode = false) const;
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_access_sector_mask_t mask,
+                                  bool probe_mode = false,
+                                  mem_fetch *mf = NULL) const;
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, mem_fetch *mf);
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, bool &wb,
+                                   evicted_block_info &evicted, mem_fetch *mf);
+
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
+  void fill(unsigned idx, unsigned time, mem_fetch *mf);
+  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
+
+protected:
+  tag_array_IPV(cache_config &config, int core_id, int type_id,
+            cache_block_t **new_lines);
+};
+
 
 class mshr_table {
  public:
