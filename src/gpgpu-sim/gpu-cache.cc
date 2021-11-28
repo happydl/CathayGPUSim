@@ -1228,7 +1228,7 @@ enum cache_request_status tag_array_IPV::access(new_addr_type addr, unsigned tim
                 status);
         abort();
     }
-	if (status !- RESERVATION_FAIL){
+	if (status != RESERVATION_FAIL){
 		
 		unsigned set_index = m_config.set_index(addr);
 		promote(set_index, idx);
@@ -1278,16 +1278,16 @@ void tag_array_IPV::promote(unsigned set_index, unsigned idx){
 	assert(oldPos != (unsigned) - 1);
 	unsigned newPos = ipv[oldPos];
 	if (newPos < oldPos){
-		for (int i = oldPos; i>newPos; i--) {
+		for (unsigned i = oldPos; i>newPos; i--) {
 			order[i] = order[i - 1];
 		}
-		order[newPos] = idx;
+		order[set_index][newPos] = idx;
 	}
 	if (newPos > oldPos){
-		for (int i = oldPos; i<newPos; i++) {
+		for (unsigned i = oldPos; i<newPos; i++) {
 			order[i] = order[i + 1];
 		}
-		order[newPos] = idx;
+		order[set_index][newPos] = idx;
 	}
 }
 
