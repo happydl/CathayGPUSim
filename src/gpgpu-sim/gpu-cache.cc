@@ -1271,7 +1271,7 @@ void tag_array_IPV::fill(unsigned index, unsigned time, mem_fetch *mf)
 void tag_array_IPV::promote(unsigned set_index, unsigned idx){
 	unsigned oldPos = (unsigned) - 1;
 	for	(unsigned i=0;i<m_config.m_assoc;i++){
-		if (order[set_index][i] == idx){
+		if (m_config.m_assoc * set_index + order[set_index][i] == idx){
 			oldPos = i;
 		}
 	}
