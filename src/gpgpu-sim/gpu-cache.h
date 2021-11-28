@@ -972,7 +972,8 @@ protected:
   tag_array_IPV(cache_config &config, int core_id, int type_id,
             cache_block_t **new_lines);
 private:
-	unsigned ** order;// order[set_index][i] = index of i=th way in m_lines[set_index], to get the block: m_lines[set_index * assoc + order[set_index][i]]
+	void promote(unsigned set_index, unsigned idx);
+	unsigned ** order;// order[set_index][i] = idx of m_lines at the "i"-th position in the "set_index" set, to get this cache_block*: m_lines[set_index * assoc + order[set_index][i]]
 	unsigned *ipv;
 };
 

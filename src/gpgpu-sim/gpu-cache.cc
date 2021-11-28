@@ -1034,10 +1034,16 @@ tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : t
 	unsigned cache_lines_num = config.get_max_num_lines();
 	unsigned n_set = config.get_nset();
 	unsigned n_assoc = m_config.m_assoc;
+	
+	ipv = (unsigned *)calloc(n_assoc, sizeof(unsigned));
+	for (int i=0; i<n_assoc; i++){
+		ipv[i] = 0; // temp, equivalent to LRU
+	}
+	
 	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
 	for (int i = 0; i < n_set; i++)
     {
-        order[i] = (unsigned *)calloc(n_assoc, sizeof(int));
+        order[i] = (unsigned *)calloc(n_assoc, sizeof(unsigned));
     }
 	for(int i = 0;i<n_set;i++) {
 		for (int j = 0; j<n_assoc;j++) {
@@ -1222,6 +1228,12 @@ enum cache_request_status tag_array_IPV::access(new_addr_type addr, unsigned tim
                 status);
         abort();
     }
+	if (status !- RESERVATION_FAIL){
+		
+		unsigned set_index = m_config.set_index(addr);
+		promote(set_index, idx);
+
+	}
     return status;
 }
 
@@ -1254,6 +1266,29 @@ void tag_array_IPV::fill(unsigned index, unsigned time, mem_fetch *mf)
 {
     assert(m_config.m_alloc_policy == ON_MISS);
     m_lines[index]->fill(time, mf->get_access_sector_mask());
+}
+
+void tag_array_IPV::promote(unsigned set_index, unsigned idx){
+	unsigned oldPos = (unsigned) - 1;
+	for	(unsigned i=0;i<m_config.m_assoc;i++){
+		if (order[set_index][i] == idx){
+			oldPos = i;
+		}
+	}
+	assert(oldPos != (unsigned) - 1);
+	unsigned newPos = ipv[oldPos];
+	if (newPos < oldPos){
+		for (int i = oldPos; i>newPos; i--) {
+			order[i] = order[i - 1];
+		}
+		order[newPos] = idx;
+	}
+	if (newPos > oldPos){
+		for (int i = oldPos; i<newPos; i++) {
+			order[i] = order[i + 1];
+		}
+		order[newPos] = idx;
+	}
 }
 
 tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id,
