@@ -950,7 +950,7 @@ class tag_array_IPV: public tag_array {
  public:
   // Use this constructor
   tag_array_IPV(cache_config &config, int core_id, int type_id);
-  tag_array_IPV();
+  ~tag_array_IPV();
 
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_fetch *mf, bool probe_mode = false) const;
