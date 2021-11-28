@@ -37,6 +37,7 @@
 #include "mem_fetch.h"
 
 #include <iostream>
+#include <vector>
 #include "addrdec.h"
 
 #define MAX_DEFAULT_CACHE_SIZE_MULTIBLIER 4
@@ -493,25 +494,19 @@ class cache_config {
       default:
         exit_parse_error();
     }
-    switch (rp) {
-      case 'L':
-        m_replacement_policy = LRU;
-        break;
-      case 'F':
-        m_replacement_policy = FIFO;
-        break;
-      default:
-        exit_parse_error();
-    }
-    switch (rp) {
-      case 'L':
-        m_replacement_policy = LRU;
-        break;
-      case 'F':
-        m_replacement_policy = FIFO;
-        break;
-      default:
-        exit_parse_error();
+    switch (rp) 
+    {
+        case 'L':
+            m_replacement_policy = LRU;
+            break;
+        case 'F':
+            m_replacement_policy = FIFO;
+            break;
+        case 'C':
+            m_replacement_policy = CLOCK_REPLACE;
+            break;
+        default:
+            exit_parse_error();
     }
     switch (wp) {
       case 'R':
@@ -821,11 +816,11 @@ class tag_array {
   virtual ~tag_array();
 
   virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                  mem_fetch *mf, bool probe_mode = false) const;
+                                  mem_fetch *mf, bool probe_mode = false);
   virtual enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_access_sector_mask_t mask,
                                   bool probe_mode = false,
-                                  mem_fetch *mf = NULL) const;
+                                  mem_fetch *mf = NULL);
   virtual enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf) ;
   virtual enum cache_request_status access(new_addr_type addr, unsigned time,
@@ -899,11 +894,11 @@ class tag_array_LRU: public tag_array {
   ~tag_array_LRU();
 
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                  mem_fetch *mf, bool probe_mode = false) const;
+                                  mem_fetch *mf, bool probe_mode = false);
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_access_sector_mask_t mask,
                                   bool probe_mode = false,
-                                  mem_fetch *mf = NULL) const;
+                                  mem_fetch *mf = NULL);
   enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf);
   enum cache_request_status access(new_addr_type addr, unsigned time,
@@ -926,11 +921,11 @@ class tag_array_FIFO: public tag_array {
   ~tag_array_FIFO();
 
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                  mem_fetch *mf, bool probe_mode = false) const;
+                                  mem_fetch *mf, bool probe_mode = false);
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_access_sector_mask_t mask,
                                   bool probe_mode = false,
-                                  mem_fetch *mf = NULL) const;
+                                  mem_fetch *mf = NULL);
   enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf);
   enum cache_request_status access(new_addr_type addr, unsigned time,
@@ -957,11 +952,11 @@ public:
     ~tag_array_CLOCK();
 
     enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                    mem_fetch *mf, bool probe_mode = false) const;
+                                    mem_fetch *mf, bool probe_mode = false);
     enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                     mem_access_sector_mask_t mask,
                                     bool probe_mode = false,
-                                    mem_fetch *mf = NULL) const;
+                                    mem_fetch *mf = NULL);
     enum cache_request_status access(new_addr_type addr, unsigned time,
                                     unsigned &idx, mem_fetch *mf);
     enum cache_request_status access(new_addr_type addr, unsigned time,
@@ -979,6 +974,7 @@ protected:
 private:
     std::vector<int> m_probe_way_i; // for each cache set, id of next probe slot id
     std::vector<bool> m_refer_bits; // refer bits of each slot in the whole cache
+    unsigned pick_and_update(unsigned set_index);
 };
 
 class mshr_table {

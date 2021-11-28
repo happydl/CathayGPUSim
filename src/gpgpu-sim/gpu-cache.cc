@@ -214,7 +214,7 @@ tag_array::~tag_array()
 
 enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
                                                mem_fetch *mf,
-                                               bool probe_mode) const
+                                               bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -223,7 +223,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
 enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
                                                mem_access_sector_mask_t mask,
                                                bool probe_mode,
-                                               mem_fetch *mf) const
+                                               mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -568,7 +568,7 @@ tag_array_LRU::~tag_array_LRU()
 
 enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx,
                                                mem_fetch *mf,
-                                               bool probe_mode) const
+                                               bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -577,7 +577,7 @@ enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx
 enum cache_request_status tag_array_LRU::probe(new_addr_type addr, unsigned &idx,
                                                mem_access_sector_mask_t mask,
                                                bool probe_mode,
-                                               mem_fetch *mf) const
+                                               mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -803,7 +803,7 @@ tag_array_FIFO::~tag_array_FIFO()
 
 enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &idx,
                                                 mem_fetch *mf,
-                                                bool probe_mode) const
+                                                bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -812,7 +812,7 @@ enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &id
 enum cache_request_status tag_array_FIFO::probe(new_addr_type addr, unsigned &idx,
                                                 mem_access_sector_mask_t mask,
                                                 bool probe_mode,
-                                                mem_fetch *mf) const
+                                                mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -1040,7 +1040,7 @@ tag_array_CLOCK::~tag_array_CLOCK()
 
 enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &idx,
                                                 mem_fetch *mf,
-                                                bool probe_mode) const
+                                                bool probe_mode)
 {
     mem_access_sector_mask_t mask = mf->get_access_sector_mask();
     return probe(addr, idx, mask, probe_mode, mf);
@@ -1049,7 +1049,7 @@ enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &i
 enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &idx,
                                                 mem_access_sector_mask_t mask,
                                                 bool probe_mode,
-                                                mem_fetch *mf) const
+                                                mem_fetch *mf)
 {
     // assert( m_config.m_write_policy == READ_ONLY );
     unsigned set_index = m_config.set_index(addr);
@@ -1057,8 +1057,6 @@ enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &i
 
     unsigned invalid_line = (unsigned)-1;
     unsigned valid_line = (unsigned)-1;
-    unsigned long long valid_timestamp = (unsigned)-1;
-
     bool all_reserved = true;
 
     // first loop: check for hit or pending hit, find invalid line if not
@@ -1126,31 +1124,11 @@ enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &i
     else
     {
     // cache is full, all cache lines are valid line, select one to evict
-        unsigned begin_way_i = m_probe_way_i[set_index];
-        unsigned tmp_way = begin_way_i;
-        while(true)
-        {
-            unsigned index = set_index * m_config.m_assoc + tmp_way;
-            cache_block_t *line = m_lines[index];
-            if (!line->is_reserved_line())
-            {
-                // all lines in cache must be valid line
-                assert(!line->is_invalid_line());
-                if(m_refer_bits[index])
-                {
-                    m_refer_bits[index] = false;
-                    tmp_way = (tmp_way + 1) % m_config.m_assoc;
-                    if(tmp_way == begin_way_i)
-                        break;
-                }
-                else
-                {
-                    idx = index;
-                    break;
-                }
-            }
-        }
+        valid_line = pick_and_update(set_index);
     }
+
+    if(valid_line != (unsigned)-1)
+        idx = valid_line;
     else
         abort(); // if an unreserved block exists, it is either invalid or
                  // replaceable
@@ -1268,11 +1246,48 @@ void tag_array_CLOCK::fill(unsigned index, unsigned time, mem_fetch *mf)
 {
     assert(m_config.m_alloc_policy == ON_MISS);
     m_lines[index]->fill(time, mf->get_access_sector_mask());
+    // (? not sure) set reference bit for CLOCK cache replacement policy
+    m_refer_bits[index] = true;
 }
 
 tag_array_CLOCK::tag_array_CLOCK(cache_config &config, int core_id, int type_id,
                                cache_block_t **new_lines) : tag_array(config, core_id, type_id, new_lines)
 {
+    m_probe_way_i = std::vector<int> (config.m_nset, 0);
+    m_refer_bits = std::vector<bool> (config.m_nset * config.m_assoc, false);
+}
+
+unsigned tag_array_CLOCK::pick_and_update(unsigned set_index)
+{
+    unsigned tmp_way = m_probe_way_i[set_index];
+    unsigned loop_count = 0;
+    unsigned valid_line = (unsigned)-1;
+    while(true)
+    {
+        ++ loop_count;
+        unsigned index = set_index * m_config.m_assoc + tmp_way;
+        cache_block_t *line = m_lines[index];
+        if (!line->is_reserved_line())
+        {
+            // all lines in cache must be valid line
+            assert(!line->is_invalid_line());
+            if(m_refer_bits[index])
+            {
+                m_refer_bits[index] = false;
+                // if reference bits of all way in this cache set is 1, then need m_assoc + 1 probe
+                if(loop_count == m_config.m_assoc + 1)
+                    break;
+                tmp_way = (tmp_way + 1) % m_config.m_assoc;
+            }
+            else
+            {
+                valid_line = index;
+                break;
+            }
+        }
+    }
+    m_probe_way_i[set_index] = tmp_way;
+    return valid_line;
 }
 
 
@@ -1851,6 +1866,7 @@ baseline_cache::baseline_cache(const char *name, cache_config &config, int core_
       m_bandwidth_management(config)
 {
     switch(config.m_replacement_policy)
+    {
         case LRU:
             m_tag_array = new tag_array_LRU(config, core_id, type_id);
             break;
@@ -1863,7 +1879,7 @@ baseline_cache::baseline_cache(const char *name, cache_config &config, int core_
         default:
             m_tag_array = new tag_array_LRU(config, core_id, type_id);
             break;
-
+    }
     init(name, config, memport, status);
 }
 
