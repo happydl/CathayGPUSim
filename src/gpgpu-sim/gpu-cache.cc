@@ -1125,13 +1125,12 @@ enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &i
     {
     // cache is full, all cache lines are valid line, select one to evict
         valid_line = pick_and_update(set_index);
-    }
-
-    if(valid_line != (unsigned)-1)
-        idx = valid_line;
-    else
-        abort(); // if an unreserved block exists, it is either invalid or
+        if(valid_line != (unsigned)-1)
+            idx = valid_line;
+        else
+            abort(); // if an unreserved block exists, it is either invalid or
                  // replaceable
+    }
 
     if (probe_mode && m_config.is_streaming())
     {
