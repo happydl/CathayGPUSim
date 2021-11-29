@@ -411,7 +411,7 @@ struct sector_cache_block : public cache_block_t {
   }
 };
 
-enum replacement_policy_t { LRU, FIFO, CLOCK_REPLACE, IPV };
+enum replacement_policy_t { LRU, FIFO, CLOCK_REPLACE, IPV, TREE_PLRU };
 
 enum write_policy_t {
   READ_ONLY,
@@ -507,6 +507,9 @@ class cache_config {
             break;
 		case 'V':
             m_replacement_policy = IPV;
+            break;
+		case 'T':
+            m_replacement_policy = TREE_PLRU;
             break;
         default:
             exit_parse_error();
@@ -777,6 +780,7 @@ class cache_config {
   friend class tag_array_FIFO;
   friend class tag_array_CLOCK;
   friend class tag_array_IPV;
+  friend class tag_array_TPLRU;
   friend class baseline_cache;
   friend class read_only_cache;
   friend class tex_cache;
@@ -988,11 +992,11 @@ class tag_array_IPV: public tag_array {
   ~tag_array_IPV();
 
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
-                                  mem_fetch *mf, bool probe_mode = false) const;
+                                  mem_fetch *mf, bool probe_mode = false);
   enum cache_request_status probe(new_addr_type addr, unsigned &idx,
                                   mem_access_sector_mask_t mask,
                                   bool probe_mode = false,
-                                  mem_fetch *mf = NULL) const;
+                                  mem_fetch *mf = NULL);
   enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf);
   enum cache_request_status access(new_addr_type addr, unsigned time,
@@ -1012,6 +1016,37 @@ private:
 	unsigned *ipv;
 };
 
+
+class tag_array_TPLRU: public tag_array {
+ public:
+  // Use this constructor
+  tag_array_TPLRU(cache_config &config, int core_id, int type_id);
+  ~tag_array_TPLRU();
+
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_fetch *mf, bool probe_mode = false);
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_access_sector_mask_t mask,
+                                  bool probe_mode = false,
+                                  mem_fetch *mf = NULL);
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, mem_fetch *mf);
+  enum cache_request_status access(new_addr_type addr, unsigned time,
+                                   unsigned &idx, bool &wb,
+                                   evicted_block_info &evicted, mem_fetch *mf);
+
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf);
+  void fill(unsigned idx, unsigned time, mem_fetch *mf);
+  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask);
+
+protected:
+  tag_array_TPLRU(cache_config &config, int core_id, int type_id,
+            cache_block_t **new_lines);
+private:
+	void promote(unsigned set_index, unsigned idx);
+	unsigned ** order;// order[set_index][i] = idx of m_lines at the "i"-th position in the "set_index" set, to get this cache_block*: m_lines[set_index * assoc + order[set_index][i]]
+	unsigned *ipv;
+};
 
 class mshr_table {
  public:
