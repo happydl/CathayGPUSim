@@ -2400,7 +2400,7 @@ baseline_cache::baseline_cache(const char *name, cache_config &config, int core_
         case IPV:
             m_tag_array = new tag_array_IPV(config, core_id, type_id);
             break;
-		case IPV:
+		case TREE_PLRU:
             m_tag_array = new tag_array_TPLRU(config, core_id, type_id);
             break;
         default:
