@@ -1011,8 +1011,8 @@ protected:
   tag_array_IPV(cache_config &config, int core_id, int type_id,
             cache_block_t **new_lines);
 private:
-	void promote(unsigned set_index, unsigned idx);
-	unsigned ** order;// order[set_index][i] = idx of m_lines at the "i"-th position in the "set_index" set, to get this cache_block*: m_lines[set_index * assoc + order[set_index][i]]
+	void promote(unsigned set_index, unsigned idx_in_set);
+	unsigned ** order;// order[set_index][i] = idx_in_set of m_lines at the "i"-th position in the "set_index" set, to get this cache_block*: m_lines[set_index * assoc + order[set_index][i]]
 	unsigned *ipv;
 };
 
@@ -1043,9 +1043,10 @@ protected:
   tag_array_TPLRU(cache_config &config, int core_id, int type_id,
             cache_block_t **new_lines);
 private:
-	void promote(unsigned set_index, unsigned idx);
-	unsigned ** order;// order[set_index][i] = idx of m_lines at the "i"-th position in the "set_index" set, to get this cache_block*: m_lines[set_index * assoc + order[set_index][i]]
-	unsigned *ipv;
+	unsigned select_block(unsigned set_index);
+	void promote(unsigned set_index, unsigned idx_in_set);
+	// state: dim0: [0..n_set - 1]: set dim1: [0 .. m_assoc - 2]:the state of the tree, 0:go left 1: go right [m_assoc - 1 .. m_assoc * 2 - 2]: idx_in_set, to get cache_block*: m_lines[set_index * assoc + state[set_index][i]] (i>=m_assoc - 1)
+	unsigned ** state; 
 };
 
 class mshr_table {

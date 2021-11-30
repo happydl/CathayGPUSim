@@ -1564,8 +1564,18 @@ tag_array_TPLRU::tag_array_TPLRU(cache_config &config, int core_id, int type_id)
 	unsigned cache_lines_num = config.get_max_num_lines();
 	unsigned n_set = config.get_nset();
 	unsigned n_assoc = m_config.m_assoc;
+
+	state = (unsigned **)calloc(n_set, sizeof(unsigned *));
+	for (int i = 0; i < n_set; i++)
+	{
+		state[i] = (unsigned *)calloc(n_assoc - 1, sizeof(unsigned)); // tree state for n sets
+	}
 	
-	
+	for(int i = 0; i<n_set; i++) {
+		for (int j = 0; j<n_assoc - 1; j++) {
+			state[i][j] = 0;
+		}
+	}
 }
 
 tag_array_TPLRU::~tag_array_TPLRU()
@@ -1651,10 +1661,9 @@ enum cache_request_status tag_array_TPLRU::probe(new_addr_type addr, unsigned &i
         return RESERVATION_FAIL; // miss and not enough space in cache to allocate
                                  // on miss
     }
-
-	unsigned valid_order_ind = order[set_index][m_config.m_assoc]; // get index from the last position of order
-	valid_line = set_index * m_config.m_assoc + valid_order_ind;
-
+	
+	valid_line = select_block(set_index);
+	
     if (invalid_line != (unsigned)-1)
     {
         idx = invalid_line;
@@ -1784,27 +1793,37 @@ void tag_array_TPLRU::fill(unsigned index, unsigned time, mem_fetch *mf)
     m_lines[index]->fill(time, mf->get_access_sector_mask());
 }
 
+unsigned tag_array_TPLRU::select_block(unsigned set_index){ // return idx in m_lines
+    int i = 0;
+	int ans = 0;
+	int d = m_config.m_assoc;
+    while (i < m_config.m_assoc - 1)
+    {
+        d = d >> 1;
+        if (state[set_index][i] == 1){
+            ans += d;
+        }
+        i = i * 2 + 1 + state[set_index][i];
+    }
+    return set_index * m_config.m_assoc + ans;
+}
+
 void tag_array_TPLRU::promote(unsigned set_index, unsigned idx){
-	unsigned oldPos = (unsigned) - 1;
-	for	(unsigned i=0;i<m_config.m_assoc;i++){
-		if (m_config.m_assoc * set_index + order[set_index][i] == idx){
-			oldPos = i;
-		}
-	}
-	assert(oldPos != (unsigned) - 1);
-	unsigned newPos = ipv[oldPos];
-	if (newPos < oldPos){
-		for (unsigned i = oldPos; i>newPos; i--) {
-			order[i] = order[i - 1];
-		}
-		order[set_index][newPos] = idx;
-	}
-	if (newPos > oldPos){
-		for (unsigned i = oldPos; i<newPos; i++) {
-			order[i] = order[i + 1];
-		}
-		order[set_index][newPos] = idx;
-	}
+    int pos;
+    pos = idx - (set_index * m_config.m_assoc) + (m_config.m_assoc - 1); // position in the tree of local index in this set
+    while (pos > 0)
+    {
+        if (pos % 2 == 1) // is the left child
+        {
+            pos = (pos - 1) / 2;
+            state[set_index][pos] = 1; // set the direction of parent node to right
+        }
+        else
+        {
+            pos = (pos - 2) / 2;
+            state[set_index][pos] = 0; // set the direction of parent node to left
+        }
+    }
 }
 
 tag_array_TPLRU::tag_array_TPLRU(cache_config &config, int core_id, int type_id,
