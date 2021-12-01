@@ -1411,7 +1411,8 @@ enum cache_request_status tag_array_IPV::probe(new_addr_type addr, unsigned &idx
 		valid_line = set_index * m_config.m_assoc + valid_order_ind;
         idx = valid_line;
     }
-    else
+
+	if (invalid_line == (unsigned)-1 && valid_line == (unsigned)-1)
         abort(); // if an unreserved block exists, it is either invalid or
                  // replaceable
 
@@ -1539,7 +1540,7 @@ unsigned tag_array_IPV::select_block(unsigned set_index){
 	for	(unsigned i = m_config.m_assoc - 1; i >= 0; i--){
 		unsigned idx = set_index * m_config.m_assoc + i;
 		cache_block_t *line = m_lines[idx];
-		if (!m_lines->is_reserved_line()){
+		if (!line->is_reserved_line()){
 			return i;
 		}
 	}
@@ -1562,9 +1563,9 @@ void tag_array_IPV::promote(unsigned set_index, unsigned idx, bool is_new){
 	unsigned newPos;
 	
 	if (is_new){
-		newPos; = ipv[m_config.m_assoc];
+		newPos = ipv[m_config.m_assoc];
 	}else{
-		newPos; = ipv[oldPos];
+		newPos = ipv[oldPos];
 	}
 	
 	if (newPos < oldPos){
