@@ -1537,6 +1537,9 @@ void tag_array_IPV::promote(unsigned set_index, unsigned idx){
 			oldPos = i;
 		}
 	}
+	if (oldPos == (unsigned) - 1){
+		printf("oldPos = %u\n\n", oldPos);
+	}
 	assert(oldPos != (unsigned) - 1);
 	unsigned newPos = ipv[oldPos];
 	if (newPos < oldPos){
