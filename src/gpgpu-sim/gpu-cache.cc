@@ -1275,7 +1275,6 @@ unsigned tag_array_CLOCK::pick_and_update(unsigned set_index)
                 // if reference bits of all way in this cache set is 1, then need m_assoc + 1 probe
                 if(loop_count == m_config.m_assoc + 1)
                     break;
-                tmp_way = (tmp_way + 1) % m_config.m_assoc;
             }
             else
             {
@@ -1283,6 +1282,7 @@ unsigned tag_array_CLOCK::pick_and_update(unsigned set_index)
                 break;
             }
         }
+        tmp_way = (tmp_way + 1) % m_config.m_assoc;
     }
     m_probe_way_i[set_index] = tmp_way;
     return valid_line;
