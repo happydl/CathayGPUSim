@@ -1105,7 +1105,6 @@ enum cache_request_status tag_array_CLOCK::probe(new_addr_type addr, unsigned &i
             if (line->is_invalid_line())
             {
                 invalid_line = index;
-                break;
             }
         }
     }
