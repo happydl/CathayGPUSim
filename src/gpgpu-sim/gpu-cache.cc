@@ -1293,22 +1293,21 @@ unsigned tag_array_CLOCK::pick_and_update(unsigned set_index)
 
 tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : tag_array(config, core_id, type_id)
 {
-	unsigned cache_lines_num = config.get_max_num_lines();
 	unsigned n_set = config.get_nset();
 	unsigned n_assoc = m_config.m_assoc;
 	
 	ipv = (unsigned *)calloc(n_assoc, sizeof(unsigned));
-	for (int i=0; i<n_assoc; i++){
+	for (unsigned i=0; i<n_assoc; i++){
 		ipv[i] = 0; // temp, equivalent to LRU
 	}
 	
 	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
-	for (int i = 0; i < n_set; i++)
+	for (unsigned i = 0; i < n_set; i++)
     {
         order[i] = (unsigned *)calloc(n_assoc, sizeof(unsigned));
     }
-	for(int i = 0;i<n_set;i++) {
-		for (int j = 0; j<n_assoc;j++) {
+	for(unsigned i = 0;i<n_set;i++) {
+		for (unsigned j = 0; j<n_assoc;j++) {
 			order[i][j] = j;
 		}
 	}
@@ -1337,7 +1336,6 @@ enum cache_request_status tag_array_IPV::probe(new_addr_type addr, unsigned &idx
 
     unsigned invalid_line = (unsigned)-1;
     unsigned valid_line = (unsigned)-1;
-    unsigned long long valid_timestamp = (unsigned)-1;
 
     bool all_reserved = true;
 
@@ -1565,18 +1563,17 @@ tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id,
 
 tag_array_TPLRU::tag_array_TPLRU(cache_config &config, int core_id, int type_id) : tag_array(config, core_id, type_id)
 {
-	unsigned cache_lines_num = config.get_max_num_lines();
 	unsigned n_set = config.get_nset();
 	unsigned n_assoc = m_config.m_assoc;
 
 	state = (unsigned **)calloc(n_set, sizeof(unsigned *));
-	for (int i = 0; i < n_set; i++)
+	for (unsigned i = 0; i < n_set; i++)
 	{
 		state[i] = (unsigned *)calloc(n_assoc - 1, sizeof(unsigned)); // tree state for n sets
 	}
 	
-	for(int i = 0; i<n_set; i++) {
-		for (int j = 0; j<n_assoc - 1; j++) {
+	for(unsigned i = 0; i<n_set; i++) {
+		for (unsigned j = 0; j<n_assoc - 1; j++) {
 			state[i][j] = 0;
 		}
 	}
@@ -1605,7 +1602,6 @@ enum cache_request_status tag_array_TPLRU::probe(new_addr_type addr, unsigned &i
 
     unsigned invalid_line = (unsigned)-1;
     unsigned valid_line = (unsigned)-1;
-    unsigned long long valid_timestamp = (unsigned)-1;
 
     bool all_reserved = true;
 
@@ -1798,9 +1794,9 @@ void tag_array_TPLRU::fill(unsigned index, unsigned time, mem_fetch *mf)
 }
 
 unsigned tag_array_TPLRU::select_block(unsigned set_index){ // return idx in m_lines
-    int i = 0;
-	int ans = 0;
-	int d = m_config.m_assoc;
+    unsigned i = 0;
+	unsigned ans = 0;
+	unsigned d = m_config.m_assoc;
     while (i < m_config.m_assoc - 1)
     {
         d = d >> 1;
