@@ -1537,12 +1537,14 @@ void tag_array_IPV::fill(unsigned index, unsigned time, mem_fetch *mf)
 // return the idx in the order arr, not the idx in the m_lines
 unsigned tag_array_IPV::select_block(unsigned set_index){
 	for	(unsigned i = m_config.m_assoc - 1; i >= 0; i--){
-		unsigned idx = set_index * m_config.m_assoc + i;
+		unsigned idx = set_index * m_config.m_assoc + order[set_index][i];
 		cache_block_t *line = m_lines[idx];
 		if (!line->is_reserved_line()){
-			return i;
+			return order[set_index][i];
 		}
 	}
+	printf("tag_array_IPV::select_block(): all reserved, impossible\n");
+	abort();
 }
 
 
