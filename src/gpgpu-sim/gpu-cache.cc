@@ -1301,7 +1301,7 @@ tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : t
 	for (unsigned i=0; i<n_assoc; i++){
 		ipv[i] = 0; 
 	}
-	ipv[n_assoc] = n_assoc - 3;
+	ipv[n_assoc] = 0;
 	
 	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
 	for (unsigned i = 0; i < n_set; i++)
@@ -1689,19 +1689,21 @@ enum cache_request_status tag_array_TPLRU::probe(new_addr_type addr, unsigned &i
                                  // on miss
     }
 	
-	valid_line = select_block(set_index);
-	
     if (invalid_line != (unsigned)-1)
     {
         idx = invalid_line;
     }
-    else if (valid_line != (unsigned)-1)
-    {
-        idx = valid_line;
-    }
-    else
-        abort(); // if an unreserved block exists, it is either invalid or
-                 // replaceable
+    else{
+		valid_line = select_block(set_index);
+		if (valid_line != (unsigned)-1)
+	    {
+	        idx = valid_line;
+	    }
+	    else
+	        abort(); // if an unreserved block exists, it is either invalid or
+	                 // replaceable
+	}
+
 
     if (probe_mode && m_config.is_streaming())
     {
@@ -1832,7 +1834,17 @@ unsigned tag_array_TPLRU::select_block(unsigned set_index){ // return idx in m_l
         }
         i = i * 2 + 1 + state[set_index][i];
     }
-    return set_index * m_config.m_assoc + ans;
+	unsigned idx;
+	cache_block_t *line;
+	for (unsigned i = 0; i<m_config.m_assoc; i++){
+		idx = set_index * m_config.m_assoc + ((ans + i) % m_config.m_assoc);
+		line = m_lines[idx];
+		if (!line->is_reserved_line()){
+			return idx;
+		}
+	}
+	printf("impossible\n");
+    abort();
 }
 
 void tag_array_TPLRU::promote(unsigned set_index, unsigned idx){
