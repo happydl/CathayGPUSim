@@ -1296,10 +1296,12 @@ tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : t
 	unsigned n_set = config.get_nset();
 	unsigned n_assoc = m_config.m_assoc;
 	
-	ipv = (unsigned *)calloc(n_assoc, sizeof(unsigned));
+	ipv = (unsigned *)calloc(n_assoc + 1, sizeof(unsigned));
+	// init ipv, temp, equivalent to LRU
 	for (unsigned i=0; i<n_assoc; i++){
-		ipv[i] = 0; // temp, equivalent to LRU
+		ipv[i] = 0; 
 	}
+	ipv[n_assoc] = n_assoc - 3;
 	
 	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
 	for (unsigned i = 0; i < n_set; i++)
@@ -1396,15 +1398,17 @@ enum cache_request_status tag_array_IPV::probe(new_addr_type addr, unsigned &idx
                                  // on miss
     }
 
-	unsigned valid_order_ind = order[set_index][m_config.m_assoc - 1]; // get index from the last position of order
-	valid_line = set_index * m_config.m_assoc + valid_order_ind;
+	
+	//unsigned valid_order_ind = order[set_index][m_config.m_assoc - 1]; // get index from the last position of order
 
     if (invalid_line != (unsigned)-1)
     {
         idx = invalid_line;
     }
-    else if (valid_line != (unsigned)-1)
+    else// if (valid_line != (unsigned)-1)
     {
+    	unsigned valid_order_ind = select_block(set_index); // get index from the last position of order
+		valid_line = set_index * m_config.m_assoc + valid_order_ind;
         idx = valid_line;
     }
     else
@@ -1489,10 +1493,12 @@ enum cache_request_status tag_array_IPV::access(new_addr_type addr, unsigned tim
         abort();
     }
 	if (status != RESERVATION_FAIL){
-		
 		unsigned set_index = m_config.set_index(addr);
-		promote(set_index, idx);
-
+		if (status == MISS){
+			promote(set_index, idx, true);
+		}else{
+			promote(set_index, idx, false);
+		}
 	}
     return status;
 }
@@ -1528,7 +1534,19 @@ void tag_array_IPV::fill(unsigned index, unsigned time, mem_fetch *mf)
     m_lines[index]->fill(time, mf->get_access_sector_mask());
 }
 
-void tag_array_IPV::promote(unsigned set_index, unsigned idx){
+// return the idx in the order arr, not the idx in the m_lines
+unsigned tag_array_IPV::select_block(unsigned set_index){
+	for	(unsigned i = m_config.m_assoc - 1; i >= 0; i--){
+		unsigned idx = set_index * m_config.m_assoc + i;
+		cache_block_t *line = m_lines[idx];
+		if (!m_lines->is_reserved_line()){
+			return i;
+		}
+	}
+}
+
+
+void tag_array_IPV::promote(unsigned set_index, unsigned idx, bool is_new){
 	unsigned oldPos = (unsigned) - 1;
 	unsigned localPos = idx - set_index * m_config.m_assoc;
 	for	(unsigned i=0;i<m_config.m_assoc;i++){
@@ -1541,7 +1559,14 @@ void tag_array_IPV::promote(unsigned set_index, unsigned idx){
 		printf("oldPos = %u\n\n", oldPos);
 	}
 	assert(oldPos != (unsigned) - 1);
-	unsigned newPos = ipv[oldPos];
+	unsigned newPos;
+	
+	if (is_new){
+		newPos; = ipv[m_config.m_assoc];
+	}else{
+		newPos; = ipv[oldPos];
+	}
+	
 	if (newPos < oldPos){
 		for (unsigned i = oldPos; i>newPos; i--) {
 			order[set_index][i] = order[set_index][i - 1];
