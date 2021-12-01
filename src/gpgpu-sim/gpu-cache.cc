@@ -1530,12 +1530,13 @@ void tag_array_IPV::fill(unsigned index, unsigned time, mem_fetch *mf)
 
 void tag_array_IPV::promote(unsigned set_index, unsigned idx){
 	unsigned oldPos = (unsigned) - 1;
+	unsigned localPos = idx - set_index * m_config.m_assoc;
 	for	(unsigned i=0;i<m_config.m_assoc;i++){
-		if (m_config.m_assoc * set_index + order[set_index][i] == idx){
+		if (order[set_index][i] == localPos){
 			oldPos = i;
 		}
 	}
-	if (oldPos == (unsigned) - 1){
+	if (oldPos == (unsigned) - 1) {
 		printf("idx = %u\n", idx);
 		printf("oldPos = %u\n\n", oldPos);
 	}
@@ -1543,15 +1544,15 @@ void tag_array_IPV::promote(unsigned set_index, unsigned idx){
 	unsigned newPos = ipv[oldPos];
 	if (newPos < oldPos){
 		for (unsigned i = oldPos; i>newPos; i--) {
-			order[i] = order[i - 1];
+			order[set_index][i] = order[set_index][i - 1];
 		}
-		order[set_index][newPos] = idx;
+		order[set_index][newPos] = localPos;
 	}
 	if (newPos > oldPos){
 		for (unsigned i = oldPos; i<newPos; i++) {
-			order[i] = order[i + 1];
+			order[set_index][i] = order[set_index][i + 1];
 		}
-		order[set_index][newPos] = idx;
+		order[set_index][newPos] = localPos;
 	}
 }
 
