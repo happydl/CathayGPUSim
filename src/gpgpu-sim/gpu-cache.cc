@@ -1398,7 +1398,7 @@ enum cache_request_status tag_array_IPV::probe(new_addr_type addr, unsigned &idx
                                  // on miss
     }
 
-	unsigned valid_order_ind = order[set_index][m_config.m_assoc]; // get index from the last position of order
+	unsigned valid_order_ind = order[set_index][m_config.m_assoc - 1]; // get index from the last position of order
 	valid_line = set_index * m_config.m_assoc + valid_order_ind;
 
     if (invalid_line != (unsigned)-1)
