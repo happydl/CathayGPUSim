@@ -1301,6 +1301,26 @@ tag_array_IPV::tag_array_IPV(cache_config &config, int core_id, int type_id) : t
 		ipv[i] = 0; 
 	}
 	ipv[n_assoc] = 0;
+	if (n_assoc >= 16) {
+		ipv[0] = 0;
+		ipv[1] = 0;
+		ipv[2] = 1;
+		ipv[3] = 0;
+		ipv[4] = 3;
+		ipv[5] = 0;
+		ipv[6] = 1;
+		ipv[7] = 2;
+		ipv[8] = 1;
+		ipv[9] = 0;
+		ipv[10] = 5;
+		ipv[11] = 1;
+		ipv[12] = 0;
+		ipv[13] = 0;
+		ipv[14] = 1;
+		ipv[15] = 11;
+		ipv[n_assoc] = 13;
+	}
+	
 	
 	order = (unsigned **)calloc(n_set, sizeof(unsigned *));
 	for (unsigned i = 0; i < n_set; i++)
