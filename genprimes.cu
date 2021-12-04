@@ -71,16 +71,16 @@ int main(int argc, char* argv[]) {
     strcat(file_name, ".txt");
     printf("%s\n", file_name);
 
-    //FILE* fp;
-    //unsigned long count = 0;
-    //fp = fopen(file_name, "w+");
-    //for (unsigned long i = 2; i <= N; i++) {
-    //    if (playground[i]) {
-    //        count++;
-    //        fprintf(fp, "%lu ", i);
-    //    }
-    //}
-    //fclose(fp);
+    FILE* fp;
+    unsigned long count = 0;
+    fp = fopen(file_name, "w+");
+    for (unsigned long i = 2; i <= N; i++) {
+        if (playground[i]) {
+            count++;
+            fprintf(fp, "%lu ", i);
+        }
+    }
+    fclose(fp);
 
     free(playground);
     // printf("%lu", count);
